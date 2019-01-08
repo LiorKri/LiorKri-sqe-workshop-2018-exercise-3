@@ -1,285 +1,151 @@
 import * as esprima from 'esprima';
+import * as esgraph from 'esgraph';
 import * as escodegen from 'escodegen';
-
-let vars = [];
-let vals = [];
 let args = [];
-let updated_env = [];
-let colors = [];
+let r_val = ['Literal' , 'Identifier', 'BinaryExpression', 'MemberExpression', 'UnaryExpression', 'ArrayExpression', 'LogicalExpression'];
+let color_paths  = [];
+let expr_nodes = [];
+let globals = [];
 
-
-const parseCode = (codeToParse, args_json) => {
+const parseCode = (codeToParse, arg) => {
     args = [];
-    vars = [];
-    vals = [];
-    updated_env = [];
-    colors = [];
-    let parsed_args = esprima.parseScript(args_json)
-    parse_args_func(parsed_args);
-    let json_obj = esprima.parseScript(codeToParse, {loc: true});
-    json_obj.body.map((x) => rec_parse_func[x.type](x,[vars,vals]));
-    json_obj.body = json_obj.body.filter((x) =>  !(x.type === 'VariableDeclaration') && !(x.type === 'ExpressionStatement'));
-    return color(escodegen.generate(json_obj));
+    color_paths = [];
+    expr_nodes = [];
+    globals = [];
+
+    let code = removeDec(codeToParse);
+    read_args(esprima.parseScript(arg));
+    let parsed_code_body = esprima.parse(code, { range: true }).body[0].body
+
+    let cfg = esgraph(parsed_code_body);
+    let dot_g = esgraph.dot(cfg, { counter: 0, source: code });
+    let expr_dot = esgraph.dot(cfg, {counter: 0});
+
+    color_paths =  discover_path(prepare_graph(dot_g.toString()),prepare_graph(expr_dot.toString()),globals.join(' '));
+
+    let pre_graph = prepare_graph(dot_g.toString())
+    let arr = pre_graph.split('\n');
+    let edges = arr.filter(x => x.includes('->'));
+    let nodes = arr.filter(x => (!x.includes('->')));
+    nodes = nodes.map(x => color_paths.includes(x.split(' ')[0])? x.substr(0, x.length-1) + ', fillcolor = green, style = filled]' : x);
+    nodes = nodes.map(x => x.split('"')).map((y,z) => y[0] + '"-' + (z + 1) + '-\n' + y[1] + '"' + y[2]);
+    nodes = create_shape(nodes);
+    nodes = nodes.join('\n');
+    edges = edges.join('\n');
+    return nodes + edges;
 
 };
 
-function args_obj (name, val){
+function arg_obj (name, val){
     this.name = name;
     this.val = val;
 }
 
-const parse_args_func = (js) => {
-    if(js.body[0].expression.expressions.length == 1){
-        let arg = new args_obj(js.body[0].expression.left.name, escodegen.generate(js.body[0].expression.right));
+const removeDec = (funcCode) => {
+    let arr = funcCode.split('\n');
+    let i = 0;
+    for(i; i < arr. length; i++){
+        if(arr[i].split(' ')[0] === 'function')
+            break;
+        else
+            globals.push(arr[i]);
+    }
+    return arr.slice(i).join(' ');
+
+};
+
+const read_args = (obj) => {
+    if(obj.body[0].expression.expressions.length == 1){
+        let arg = new arg_obj(obj.body[0].expression.left.name, escodegen.generate(obj.body[0].expression.right));
         args.push(arg);
     }
-    else if(js.body[0].expression.expressions.length > 1){
-         let i;
-         for (i = 0; i < js.body[0].expression.expressions.length; i++) {
-            let arg = new args_obj(js.body[0].expression.expressions[i].left.name,escodegen.generate(js.body[0].expression.expressions[i].right));
-            args.push(arg);
-          }
-    }
-};
-
-const filter_func = (x) => {
-    return x.type === 'VariableDeclaration'? false :
-        x.type === 'ExpressionStatement' ? ((is_arg_func(x.expression.left.name)) ||
-            (x.expression.left.type === 'MemberExpression' ? (is_arg_func(x.expression.left.object.name)) : false)) :
-            true;
-};
-
-const parse_bloc_state = (js,env) => {
-    let i;
-    for(i = 0; i <  js.body.length; i++){
-        rec_parse_func[js.body[i].type](js.body[i],env);
-    }
-    js.body = js.body.filter(filter_func);
-};
-
-
-const parse_func_dec = (js,env) => {
-    rec_parse_func[js.body.type](js.body,env);
-};
-
-const parse_var_dec = (js,env) => {
-    let i;
-    for (i = 0; i < js.declarations.length; i++) {
-        let val;
-        if(js.declarations[i].init == null) {
-            val = null;
-        }
-        else {
-            val = parse_exp[js.declarations[i].init.type](js.declarations[i].init,env);
-        }
-        let env_var = js.declarations[i].id.name;
-        env[0].push(env_var);
-        env[1].push(val);
-    }
-};
-
-const parse_assignment_expr = (js,env) =>{
-    let val = parse_exp[js.right.type](js.right,env);
-    env[0].push(js.left.name);
-    env[1].push(val);
-    js.right = esprima.parseScript(val).body[0].expression;
-};
-
-const parse_expr_statement = (js,env) => {
-    parse_assignment_expr(js.expression,env);
-};
-
-const clone_env_func = (env) =>{
-    let new_vars = env[0].map((x) => x);
-    let new_vals = env[1].map((x) => x);
-    return [new_vars,new_vals];
-};
-
-const parse_while_state = (js,env) => {
-    let cond = parse_exp[js.test.type](js.test, env);
-    js.test = esprima.parseScript(cond).body[0].expression;
-    let clone_env = clone_env_func(env);
-    rec_parse_func[js.body.type](js.body,clone_env);
-};
-
-const run_cond_with_args = (js,env) => {
-    let code;
-    code = args.reduce(((str, line) => str + 'let ' + line.name + ' = ' + line.val + '; '), '');
-    let i;
-    for( i = 0; i < env[0].length; i++){
-        if(is_arg_func(env[0][i]))
-            code += env[0][i] + ' = ' + env[1][i] + '; ';
-    }
-    code += js + ';';
-    return eval(code);
-};
-
-const add_env = (env,new_env) => {
-    let i;
-    for(i = 0 ; i < new_env[0].length; i++){
-        env[0].push(new_env[0][i]);
-        env[1].push(new_env[1][i]);
-    }
-};
-
-const parse_alternate_if_state = (js,env) => {
-    let cond = parse_exp[js.test.type](js.test,env);
-    js.test = esprima.parseScript(cond).body[0].expression;
-    let clone_env = clone_env_func(env);
-    colors.push(run_cond_with_args(cond,env));
-    rec_parse_func[js.consequent.type](js.consequent,clone_env);
-    if(run_cond_with_args(cond,env) && updated_env.length === 0) {
-        updated_env = clone_env;
-    }
-    if (js.alternate != null)
-        parse_alternate_if[js.alternate.type](js.alternate,env);
-};
-
-const parse_alternate_block_state = (js,env) => {
-    let clone_env = clone_env_func(env);
-    let j;
-    for(j = 0; j <  js.body.length; j++){
-        rec_parse_func[js.body[j].type](js.body[j],clone_env);
-    }
-    if(updated_env.length === 0){
-        updated_env = clone_env;
-
-    }
-    js.body = js.body.filter(filter_func);
-};
-
-const parse_return_state = (js,env) => {
-    let var1 = parse_exp[js.argument.type](js.argument,env);
-    js.argument = esprima.parseScript(var1).body[0].expression;
-};
-
-const parse_alternate_if = {
-    'IfStatement' : parse_alternate_if_state,
-    'BlockStatement' : parse_alternate_block_state,
-    'ReturnStatement' : parse_return_state
-
-};
-
-const parse_if_state = (js,env) => {
-    let cond = parse_exp[js.test.type](js.test,env);
-    js.test = esprima.parseScript(cond).body[0].expression;
-    let clone_env = clone_env_func(env);
-    colors.push(run_cond_with_args(cond,env));
-    rec_parse_func[js.consequent.type](js.consequent,clone_env);
-    if(run_cond_with_args(cond,env) && updated_env.length === 0) {
-        updated_env = clone_env;
-    }
-    if (js.alternate != null)
-        parse_alternate_if[js.alternate.type](js.alternate,env,0);
-    if(updated_env.length !== 0) {
-        add_env(env, updated_env);
-    }
-};
-
-const right_literal = (js) => {
-    return js.raw;
-};
-
-const right_identifier = (js,env) => {
-    try{
-        let val = get_val_from_env_func(js.name, env);
-        if(is_arg_func(js.name))
-            return js.name;
-        else
-            return val;
-    }
-    catch (e){
-        return js.name;
-    }
-};
-
-const unary_exp = (js,env) => {
-    return js.operator + (parse_exp[js.argument.type](js.argument,env));
-};
-
-const add_parer = (left,op,right) => {
-    if(left.toString().length > 1 && right.toString().length > 1){
-        return '(' + left + ') ' + op + ' (' + right + ')';
-    }
-    else if(left.toString().length > 1){
-        return '(' + left + ') ' + op + ' ' + right ;
-    }
     else{
-        return left + ' ' + op + ' (' + right + ')';
-    }
-};
-const right_binary = (js,env) => {
-    let left = (parse_exp[js.left.type](js.left,env));
-    let right = (parse_exp[js.right.type](js.right,env));
-    if (js.operator === '*' || js.operator === '/'){
-        return add_parer(left,js.operator,right);
-    }
-    return left + ' ' + js.operator + ' ' + right;
-};
-
-const array_exp = (js,env) => {
-    let str = '[';
-    let i;
-    for(i = 0; i < js.elements.length - 1; i++){
-        str = str + parse_exp[js.elements[i].type](js.elements[i],env);
-        str = str + ', ';
-    }
-    str = str +parse_exp[js.elements[i].type](js.elements[i],env);
-    str = str + ']';
-    return str;
-};
-
-const member_exp = (js,env) => {
-    return (parse_exp[js.object.type](js.object,env)) + '[' + (parse_exp[js.property.type](obj.property,env)) + ']';
-};
-
-
-const parse_exp =  {
-    'Literal' : right_literal,
-    'Identifier' : right_identifier,
-    'UnaryExpression' : unary_exp,
-    'BinaryExpression' : right_binary,
-    'ArrayExpression' : array_exp,
-    'MemberExpression' : member_exp
-};
-
-const rec_parse_func = {
-    'FunctionDeclaration' : parse_func_dec,
-    'BlockStatement' : parse_bloc_state,
-    'VariableDeclaration' : parse_var_dec,
-    'ExpressionStatement' : parse_expr_statement,
-    'AssignmentExpression' : parse_assignment_expr,
-    'WhileStatement' : parse_while_state,
-    'IfStatement' : parse_if_state,
-    'ReturnStatement' : parse_return_state
-};
-
-const get_val_from_env_func = (name,env) => {
-    let idx = env[0].lastIndexOf(name);
-    return env[1][idx];
-};
-
-const is_arg_func = (arg) => {
-    let i;
-    for(i = 0; i < args.length; i++){
-        if((args[i].name === arg))
-            return true;
-    }
-    return false;
-};
-
-
-const color = (str) => {
-    let arr = str.split('\n');
-    let i;
-    let j = 0;
-    for(i = 0; i < arr.length; i++){
-        if(arr[i].includes('if') || arr[i].includes('else if')){
-            arr[i] = colors[j] === false? '<markRed>' + arr[i] + '</markRed>' : '<markGreen>' + arr[i] + '</markGreen>';
-            j++;
+        let i;
+        for (i = 0; i < obj.body[0].expression.expressions.length; i++) {
+            let arg = new arg_obj(obj.body[0].expression.expressions[i].left.name,escodegen.generate(obj.body[0].expression.expressions[i].right));
+            args.push(arg);
         }
     }
-    return arr.join('\n');
 };
 
-export {parseCode};
+const prepare_graph = (g) => {
+    let arr = g.split('\n').filter(x => !x.includes('label=exception') && !(x.includes('n0')));
+    let i;
+    let s = '';
+    for (i = 0; i < arr.length; i++) {
+        if(arr[i].includes('exit'))
+            s = arr[i].split(' ')[0];
+    }
+    return arr.filter(x => !x.includes(s) && !x.includes('exit')).join('\n').trim();
+};
+
+const parse_args = () => {
+    return args.reduce(((str, line) => str + 'let ' + line.name + ' = ' + line.val + '; '), '');
+};
+
+
+const get_expr = (i) =>{
+    let ans = expr_nodes.filter(x => x[0] === i + '');
+    return ans[0][1];
+};
+
+
+const create_shape = (nodes) => {
+    return nodes.map((x) => (r_val.includes(get_expr(parseInt(x.split(' ')[0].substr(1)))))? x.substr(0, x.length - 1) + ', shape = diamond]' : x.substr(0, x.length - 1) + ', shape = box]');
+};
+
+const get_node = (edges, cur) => {
+    let i;
+    for(i = 0; i < edges.length; i++){
+        if((edges[i][0] === cur) && (edges[i][1][1] === '[]')) {
+            return edges[i][1][0];
+        }
+    }
+    return 'end';
+};
+
+const get_if_node = (edges, cur, val) => {
+    let i;
+    for(i = 0; i < edges.length; i++){
+        if(edges[i][0] === cur && edges[i][1][1].includes(val.toString()))
+            return edges[i][1][0];
+    }
+    return 'end';
+};
+
+const discover_path = (dot_graph,expr_graph, eval_str) => {
+    let arr = dot_graph.split('\n');
+    let expr_arr = expr_graph.split('\n');
+    let edges = arr.filter(x => x.includes('->')).map((x) => x.split('->').map((y) => y.trim()));
+    edges = edges.map(x => [x[0], x[1].split(' ')]);
+    let nodes = arr.filter(x => (!x.includes('->')));
+    expr_nodes = expr_arr.filter(x => !x.includes('->')).map(x => x.split(' ')).map(x => [x[0].substr(1), x[1].split('"')[1]]);
+    let code_array = nodes.map(x => x.split('"')).map(x => [x[0].split(' ')[0].substr(1), x[1]]);
+    nodes = nodes.map(x => x.split(' ')[0]);
+    let eval_parsed = eval_str + parse_args();
+    let color_paths = [];
+    let i = 0;
+    let next_node = nodes[0];
+    let code_by_array;
+    while(i < expr_nodes.length + 1){
+        i = parseInt(next_node.slice(1));
+        if(next_node === 'end'){
+           break;}
+        color_paths.push(next_node);
+        code_by_array = code_array.filter(x => x[0] === i + '')[0][1];
+        if(r_val.includes(get_expr(i))){
+            let val = eval(eval_parsed + code_by_array);
+            next_node = get_if_node(edges,next_node,val);}
+        else{
+            if(code_by_array.charAt(code_by_array.length - 1) === ';')
+                eval_parsed += code_by_array + ' ';
+            else
+                eval_parsed += code_by_array + '; ';
+            next_node = get_node(edges, next_node);
+        }
+    }
+    return color_paths;
+};
+
+
+export {parseCode, removeDec, read_args,prepare_graph,create_shape };

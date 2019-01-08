@@ -1,272 +1,267 @@
 import assert from 'assert';
-import {parseCode} from '../src/js/code-analyzer';
+import {parseCode, removeDec, prepare_graph,create_shape } from '../src/js/code-analyzer';
 
 describe('The javascript parser', () => {
-    it('testE2E', () => {
+    it('testRemoveDec', () => {
+        assert.equal(
+            removeDec('let a = 5;\n' +
+                'function f(x , y, z){\n' +
+                '   if(a === 4)\n' +
+                '  {\n' +
+                '    return 1;\n' +
+                '  }else if(a === 5){ return 2;}\n' +
+                '  else{ return 3;}\n' +
+                '}'),
+            'function f(x , y, z){' +
+            ' if(a === 4)' +
+            ' {' +
+            ' return 1;' +
+            ' }else if(a === 5){ return 2;}' +
+            ' else{ return 3;}' +
+            ' }'
+        );
+    });
+
+    it('testParseCode1', () => {
         assert.equal(
             parseCode('function foo(x, y, z){\n' +
                 '    let a = x + 1;\n' +
                 '    let b = a + y;\n' +
                 '    let c = 0;\n' +
+                '    \n' +
                 '    if (b < z) {\n' +
                 '        c = c + 5;\n' +
-                '        return x + y + z + c;\n' +
                 '    } else if (b < z * 2) {\n' +
                 '        c = c + x + 5;\n' +
-                '        return x + y + z + c;\n' +
                 '    } else {\n' +
                 '        c = c + z + 5;\n' +
-                '        return x + y + z + c;\n' +
                 '    }\n' +
-                '}','(x=1, y=2, z=3)'),
-            'function foo(x, y, z) {\n' +
-            '<markRed>    if (x + 1 + y < z) {</markRed>\n' +
-            '        return x + y + z + 0 + 5;\n' +
-            '<markGreen>    } else if (x + 1 + y < z * 2) {</markGreen>\n' +
-            '        return x + y + z + 0 + x + 5;\n' +
-            '    } else {\n' +
-            '        return x + y + z + 0 + z + 5;\n' +
-            '    }\n' +
-            '}'
+                '    \n' +
+                '    return c;\n' +
+                '}\n', '(x=1, y=2, z=3)'),
+            'n1 [label="-1-\n' +
+            'let a = x + 1;", fillcolor = green, style = filled, shape = box]\n' +
+            'n2 [label="-2-\n' +
+            'let b = a + y;", fillcolor = green, style = filled, shape = box]\n' +
+            'n3 [label="-3-\n' +
+            'let c = 0;", fillcolor = green, style = filled, shape = box]\n' +
+            'n4 [label="-4-\n' +
+            'b < z", fillcolor = green, style = filled, shape = diamond]\n' +
+            'n5 [label="-5-\n' +
+            'c = c + 5", shape = box]\n' +
+            'n6 [label="-6-\n' +
+            'return c;", fillcolor = green, style = filled, shape = box]\n' +
+            'n7 [label="-7-\n' +
+            'b < z * 2", fillcolor = green, style = filled, shape = diamond]\n' +
+            'n8 [label="-8-\n' +
+            'c = c + x + 5", fillcolor = green, style = filled, shape = box]\n' +
+            'n9 [label="-9-\n' +
+            'c = c + z + 5", shape = box]n1 -> n2 []\n' +
+            'n2 -> n3 []\n' +
+            'n3 -> n4 []\n' +
+            'n4 -> n5 [label="true"]\n' +
+            'n4 -> n7 [label="false"]\n' +
+            'n5 -> n6 []\n' +
+            'n7 -> n8 [label="true"]\n' +
+            'n7 -> n9 [label="false"]\n' +
+            'n8 -> n6 []\n' +
+            'n9 -> n6 []'
         );
     });
 
-    it('testAlternateIf1', () => {
+    it('testParseCode2', () => {
         assert.equal(
-            parseCode('function f(x, y, z){\n' +
-                ' let a = 1;\n' +
-                ' let b = a + y; \n' +
-                ' x = y;\n' +
-                ' if(x > 1){\n' +
-                '  a = x + 1;}\n' +
-                ' else{\n' +
-                '  a = y + 1;}\n' +
-                ' return a;\n' +
-                '}','(x=1, y=2, z=1)'),
-            'function f(x, y) {\n' +
-            '    x = y;\n' +
-            '<markGreen>    if (x > 1) {</markGreen>\n' +
-            '    } else {\n' +
-            '    }\n' +
-            '    return x + 1;\n' +
-            '}'
+            parseCode('function foo(x, y){\n' +
+                '  let a = x + 1;\n' +
+                '  let b = a + y + 1;\n' +
+                '  let c = 0;\n' +
+                '\n' +
+                '  while (a < x) {\n' +
+                '    c = a + b;\n' +
+                '    z = c * 2;\n' +
+                '    a++;\n' +
+                '  }\n' +
+                '  return x;\n' +
+                '}', '(x=1, y=2)'),
+            'n1 [label="-1-\n' +
+            'let a = x + 1;", fillcolor = green, style = filled, shape = box]\n' +
+            'n2 [label="-2-\n' +
+            'let b = a + y + 1;", fillcolor = green, style = filled, shape = box]\n' +
+            'n3 [label="-3-\n' +
+            'let c = 0;", fillcolor = green, style = filled, shape = box]\n' +
+            'n4 [label="-4-\n' +
+            'a < x", fillcolor = green, style = filled, shape = diamond]\n' +
+            'n5 [label="-5-\n' +
+            'c = a + b", shape = box]\n' +
+            'n6 [label="-6-\n' +
+            'z = c * 2", shape = box]\n' +
+            'n7 [label="-7-\n' +
+            'a++", shape = box]\n' +
+            'n8 [label="-8-\n' +
+            'return x;", fillcolor = green, style = filled, shape = box]n1 -> n2 []\n' +
+            'n2 -> n3 []\n' +
+            'n3 -> n4 []\n' +
+            'n4 -> n5 [label="true"]\n' +
+            'n4 -> n8 [label="false"]\n' +
+            'n5 -> n6 []\n' +
+            'n6 -> n7 []\n' +
+            'n7 -> n4 []'
         );
     });
 
-     it('testAlternateIf2', () => {
-            assert.equal(
-                parseCode('function foo(x, y, z){\n' +
-                    ' let a = y + 1;\n' +
-                    ' if(x != y){\n' +
-                    '  if(y == z){\n' +
-                    '   a = z + 1;\n' +
-                    '  }\n' +
-                    '  else if(y == x + 1){\n' +
-                    '   a = 1;\n' +
-                    '  }\n' +
-                    ' }\n' +
-                    ' else{\n' +
-                    '  a = 2;\n' +
-                    ' }\n' +
-                    '    return z + a;\n' +
-                    '}','(x=1, y=2, z=3)'),
-                'function foo(x, y, z) {\n' +
-                '<markGreen>    if (x != y) {</markGreen>\n' +
-                '<markRed>        if (y == z) {</markRed>\n' +
-                '<markGreen>        } else if (y == x + 1) {</markGreen>\n' +
-                '        }\n' +
-                '    } else {\n' +
-                '    }\n' +
-                '    return z + 2;\n' +
-                '}'
-            );
-        });
+    it('testParseCode3', () => {
+        assert.equal(
+            parseCode('function foo(){\n' +
+                '   let a = 1;\n' +
+                '   let b = 2;\n' +
+                '   let c = 3;\n' +
+                '}', ''),
+            'n1 [label="-1-\n' +
+            'let a = 1;", shape = box]\n' +
+            'n2 [label="-2-\n' +
+            'let b = 2;", shape = box]\n' +
+            'n3 [label="-3-\n' +
+            'let c = 3;", shape = box]\n' +
+            'n2 -> n3 []\n' +
+        );
+    });
 
-    it('testWhile1', () => {
+    it('testParseCode4', () => {
+        assert.equal(
+            parseCode('function foo(x, z){\n' +
+                '   \n' +
+                '   let a = [1,2,3];\n' +
+                '   if (x < z) {\n' +
+                '       return a[1];\n' +
+                '   }\n' +
+                '   else{return a[0];}\n' +
+                '}\n','(x = 2, z = 1)'),
+            'n1 [label="-1-\n' +
+            'let a = [1,2,3];", fillcolor = green, style = filled, shape = box]\n' +
+            'n2 [label="-2-\n' +
+            'x < z", fillcolor = green, style = filled, shape = diamond]\n' +
+            'n3 [label="-3-\n' +
+            'return a[1]", shape = box]\n' +
+            'n4 [label="-4-\n' +
+            'return a[0]", fillcolor = green, style = filled, shape = box]n1 -> n2 []\n' +
+            'n2 -> n3 [label="true"]\n' +
+            'n2 -> n4 [label="false"]\n' +
+         );
+    });
+
+    it('testParseCode5', () => {
         assert.equal(
             parseCode('function foo(x, y, z){\n' +
-                '    let a = x + 1;\n' +
-                '    let b = a + y;\n' +
-                '    let c = 0;\n' +
-                '    \n' +
-                '    while (a < z) {\n' +
-                '        c = a + b;\n' +
-                '        z = c * 2;\n' +
-                '    }\n' +
-                '    \n' +
-                '    return z;\n' +
-                '}\n','(x=1, y=2, z=3)'),
-            'function foo(x, y, z) {\n' +
-            '    while (x + 1 < z) {\n' +
-            '        z = (x + 1 + x + 1 + y) * 2;\n' +
-            '    }\n' +
-            '    return z;\n' +
-            '}'
-        );
+                '   \n' +
+                '   let a = [1,2,3];\n' +
+                '   if (x < y + z) {\n' +
+                '       return a[1];\n' +
+                '   }\n' +
+                '   else{return a[0];}\n' +
+                '}\n','(x = 5, y= 3, z = 1)'),
+            'n1 [label="-1-\n' +
+            'let a = [1,2,3];", fillcolor = green, style = filled, shape = box]\n' +
+            'n2 [label="-2-\n' +
+            'x < y + z", fillcolor = green, style = filled, shape = diamond]\n' +
+            'n3 [label="-3-\n' +
+            'return a[1]",  fillcolor = green, style = filled, shape = box]\n' +
+            'n4 [label="-4-\n' +
+            'return a[0]", shape = box]n1 -> n2 []\n' +
+            'n2 -> n3 [label="true"]\n' +
+            'n2 -> n4 [label="false"]\n' +
+         );
     });
 
-    it('testWhile2', () => {
+    it('testParseCode6', () => {
         assert.equal(
             parseCode('function foo(x, y, z){\n' +
-                '    let a = x + 1;\n' +
-                '    let b = a + y;\n' +
-                '    let c = 0;\n' +
-                '    \n' +
-                '    while (a < z) {\n' +
-                '        c = a + b;\n' +
-                '        z = 5 * c;\n' +
-                '    }\n' +
-                '    \n' +
-                '    return z;\n' +
-                '}','(x=1, y=2, z=3)'),
-            'function foo(x, y, z) {\n' +
-            '    while (x + 1 < z) {\n' +
-            '        z = 5 * (x + 1 + x + 1 + y);\n' +
-            '    }\n' +
-            '    return z;\n' +
-            '}'
-        );
+                '   \n' +
+                '   let a = [1,2,3];\n' +
+                '   if (x + y< y + z) {\n' +
+                '       return a[1];\n' +
+                '   }\n' +
+                '   else{return a[0];}\n' +
+                '}\n','(x = 5, y= 3, z = 1)'),
+            'n1 [label="-1-\n' +
+            'let a = [1,2,3];", fillcolor = green, style = filled, shape = box]\n' +
+            'n2 [label="-2-\n' +
+            'x + y< y + z", fillcolor = green, style = filled, shape = diamond]\n' +
+            'n3 [label="-3-\n' +
+            'return a[1]", shape = box]\n' +
+            'n4 [label="-4-\n' +
+            'return a[0]", fillcolor = green, style = filled, shape = box]n1 -> n2 []\n' +
+            'n2 -> n3 [label="true"]\n' +
+            'n2 -> n4 [label="false"]\n' +
+         );
     });
-    it('testWhile3', () => {
+
+    it('testParseCode7', () => {
         assert.equal(
             parseCode('function foo(x, y, z){\n' +
-                '    let a = x + 1;\n' +
-                '    let b = a + y;\n' +
-                '    let c = 0;\n' +
-                '    \n' +
-                '    while (a < z) {\n' +
-                '        c = a + b;\n' +
-                '        z = c + c;\n' +
-                '    }\n' +
-                '    \n' +
-                '    return z;\n' +
-                '}','(x=1, y=2, z=3)'),
-            'function foo(x, y, z) {\n' +
-            '    while (x + 1 < z) {\n' +
-            '        z = (x + 1 + x + 1 + y) + (x + 1 + x + 1 + y);\n' +
-            '    }\n' +
-            '    return z;\n' +
-            '}'
-        );
+                '   \n' +
+                '   let a = [1,2,3];\n' +
+                '   if (x + y< y + z) {\n' +
+                '       return a[1];\n' +
+                '   }\n' +
+                '   else{return a[0];}\n' +
+                '}\n','(x = 1, y= 3, z = 4)'),
+            'n1 [label="-1-\n' +
+            'let a = [1,2,3];", fillcolor = green, style = filled, shape = box]\n' +
+            'n2 [label="-2-\n' +
+            'x + y< y + z", fillcolor = green, style = filled, shape = diamond]\n' +
+            'n3 [label="-3-\n' +
+            'return a[1]",  fillcolor = green, style = filled, shape = box]\n' +
+            'n4 [label="-4-\n' +
+            'return a[0]", shape = box]n1 -> n2 []\n' +
+            'n2 -> n3 [label="true"]\n' +
+            'n2 -> n4 [label="false"]\n' +
+         );
     });
-    it('testFuncDec1', () => {
+
+    it('testParseCode8', () => {
         assert.equal(
-            parseCode('let a = 1;\n' +
-                'function f(x){\n' +
-                ' let a = 1;\n' +
-                '  \n' +
-                ' if(true){\n' +
-                '  a = 5;\n' +
-                ' }\n' +
-                ' else{\n' +
-                '  a = 2;\n' +
-                ' }\n' +
-                'return x + a;\n' +
-                '}','(x=1, y=2)'),
-            'function f(x) {\n' +
-            '<markGreen>    if (true) {</markGreen>\n' +
-            '    } else {\n' +
-            '    }\n' +
-            '    return x + 5;\n' +
-            '}'
-        );
+            parseCode('function foo(x, y, z){\n' +
+                '   \n' +
+                '   let a = [1,2,3];\n' +
+                '   if (x < y + z) {\n' +
+                '       return a[0];\n' +
+                '   }\n' +
+                '   else{return a[1];}\n' +
+                '}\n','(x = 5, y= 3, z = 1)'),
+            'n1 [label="-1-\n' +
+            'let a = [1,2,3];", fillcolor = green, style = filled, shape = box]\n' +
+            'n2 [label="-2-\n' +
+            'x < y + z", fillcolor = green, style = filled, shape = diamond]\n' +
+            'n3 [label="-3-\n' +
+            'return a[0]",  fillcolor = green, style = filled, shape = box]\n' +
+            'n4 [label="-4-\n' +
+            'return a[1]", shape = box]n1 -> n2 []\n' +
+            'n2 -> n3 [label="true"]\n' +
+            'n2 -> n4 [label="false"]\n' +
+         );
     });
-    it('testFuncDec2', () => {
+
+    it('testParseCode9', () => {
         assert.equal(
-            parseCode('let a = 1;\n' +
-                'function f(x){\n' +
-                ' let a ;\n' +
-                ' let d = x - 1;\n' +
-                ' let arr = [1, 2, 3];\n'+
-                '  \n' +
-                ' if(x[0] === 1){\n' +
-                '  a = 2;\n' +
-                ' }\n' +
-                ' else{\n' +
-                '  a = 4;\n' +
-                ' }\n' +
-                'return a;\n' +
-                '}','(x=[1])'),
-            'function f(x) {\n' +
-            '<markGreen>    if (x[0] === 1) {</markGreen>\n' +
-            '    } else {\n' +
-            '    }\n' +
-            '    return 2;\n' +
-            '}'
-        );
-    });
-    it('testArr1', () => {
-        assert.equal(
-            parseCode('function foo(z){ \n' +
-                '  let a = 1;\n' +
-                '  let b = z[0] - 1;\n' +
-                '  let arr = [1,2,3];\n' +
-                '  let c = 2 * a + 4;\n' +
-                '  z[1] = 2;\n' +
-                '  if (a == b){\n' +
-                '     a = b;\n' +
-                '     return b;\n' +
-                '  }\n' +
-                '  return a / -5;\n' +
-                '}','(z=[1,2,3])'),
-            'function foo(z) {\n' +
-            '    z[1] = 2;\n' +
-            '<markRed>    if (1 == 0) {</markRed>\n' +
-            '        return 0;\n' +
-            '    }\n' +
-            '    return 1 / -5;\n' +
-            '}'
-        );
-    });
-    it('testArr2', () => {
-        assert.equal(
-            parseCode('function foo(z){ \n' +
-                '  let a = 1;\n' +
-                '  let b = z[2] - 2;\n' +
-                '  let arr = [1,2,3];\n' +
-                '  let c = 4 + 2 * a;\n' +
-                '  z[1] = 2;\n' +
-                '  if (a == b){\n' +
-                '     a = b * 2;\n' +
-                '     return b;\n' +
-                '  }\n' +
-                '  else if(a == b + 1){\n' +
-                '    a = b;\n' +
-                '  }\n' +
-                '  return a;\n' +
-                '}','(z=[1,2,3])'),
-            'function foo(z) {\n' +
-            '    z[1] = 2;\n' +
-            '<markGreen>    if (1 == 1) {</markGreen>\n' +
-            '        return 1;\n' +
-            '<markRed>    } else if (1 == -1) {</markRed>\n' +
-            '    }\n' +
-            '    return 2;\n' +
-            '}'
-        );
-    });
-    it('testNoArgs', () => {
-        assert.equal(
-            parseCode('function foo(){ \n' +
-                '    let a = 2;\n' +
-                '    let b = 1;\n' +
-                '    let c = 0;\n' +
-                '    if (b < a) {\n' +
-                '        c = c + 5;\n' +
-                '        return a + c;\n' +
-                '    } else if (b < a * 2) {\n' +
-                '        c = c + 5;\n' +
-                '        return b + c;}\n' +
-                '    }\n' +
-                '}',''),
-            'function foo() {\n' +
-            '<markGreen>    if (1 < 2) {</markGreen>\n' +
-            '        return 2 + 5;\n' +
-            '<markRed>    } else if (1 < 2 * 2) {</markRed>\n' +
-            '        return 1 + 5;}\n' +
-            '    }\n' +
-            '}'
-        );
+            parseCode('function foo(x, y, z){\n' +
+                '   \n' +
+                '   let a = [1,2,3];\n' +
+                '   if (x < y + z*2) {\n' +
+                '       return a[1];\n' +
+                '   }\n' +
+                '   else{return a[0];}\n' +
+                '}\n','(x = 4, y= 3, z = 1)'),
+            'n1 [label="-1-\n' +
+            'let a = [1,2,3];", fillcolor = green, style = filled, shape = box]\n' +
+            'n2 [label="-2-\n' +
+            'x < y + z*2", fillcolor = green, style = filled, shape = diamond]\n' +
+            'n3 [label="-3-\n' +
+            'return a[1]",  fillcolor = green, style = filled, shape = box]\n' +
+            'n4 [label="-4-\n' +
+            'return a[0]", shape = box]n1 -> n2 []\n' +
+            'n2 -> n3 [label="true"]\n' +
+            'n2 -> n4 [label="false"]\n' +
+         );
     });
 
 });

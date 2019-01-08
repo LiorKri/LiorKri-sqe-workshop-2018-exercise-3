@@ -8,21 +8,15 @@
         width: 100%;
         height: 100%;
         }
+
         .textAreaWrapper {
         width: 100%;
         height: 80vh;
         }
+
         textarea {
         width: 80%;
         height: 95%;
-        }
-        markRed {
-        background-color: red;
-        color: black;
-        }
-        markGreen {
-        background-color: lime;
-        color: black;
         }
     </style>
 </head>
@@ -31,41 +25,41 @@
     <tr>
         <td>
             <div>
-                <label>Enter code</label>
+                <label>Enter Code:</label>
             </div>
         </td>
         <td>
             <div>
-                <label>Enter Arguments Vecor</label>
+                <label>Enter Arguments: <br/>(1,2,3,..)</label>
             </div>
         </td>
         <td>
             <div>
-                <label>Result</label>
+                <label>CFG Graph:</label>
             </div>
         </td>
     </tr>
     <tr>
         <td>
             <div class="textAreaWrapper">
-                <textarea id="codePlaceholder" title="Enter code here"></textarea>
+                <textarea id="codePlaceholder" title="Enter code"></textarea>
             </div>
         </td>
         <td>
             <div class="textAreaWrapper">
-                <textarea id="codePlaceholder2" title="Enter arg vector"></textarea>
+                <textarea id="codePlaceholder2" title="Enter Arguments"></textarea>
             </div>
         </td>
         <td>
             <div class="textAreaWrapper">
-                <pre id="Result" title="Result"></pre>
+                <pre id="result" title="Parsed Code Here"></pre>
             </div>
         </td>
     </tr>
     <tr>
         <td>
             <div>
-                <button id="codeSubmissionButton">Parse code</button>
+                <button id="codeSubmissionButton">Parse to CFG</button>
             </div>
         </td>
         <td>
